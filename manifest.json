@@ -1,0 +1,13 @@
+{
+  "name": "Molduras IA",
+  "short_name": "Molduras",
+  "description": "Criador de molduras com IA — grátis e open source",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0A0C10",
+  "theme_color": "#006805",
+  "lang": "pt-BR",
+  "icons": []
+}
