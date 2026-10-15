@@ -1,10 +1,6 @@
 /* =============================================================
-   MOLDURAS IA — App completo em um arquivo
-   
-   IA de geração: Pollinations.ai modo kontext
-   - Aceita imagem de referência
-   - Preserva identidade
-   - Sem CORS, sem token, grátis
+   MOLDURAS IA — App com Hugging Face
+   Fluxo: Foto → IA gera fundo → Recorte → Moldura → Salvar
    ============================================================= */
 
 import {
@@ -17,7 +13,9 @@ import {
    ============================================================= */
 const SIZE = 1080;
 const MAX_FRAMES = 50;
-const AI_PROMPT = 'Professional close-up portrait photograph, maintaining rigorously the same identity, face, expression and physical characteristics of the person in the reference image. Outdoor setting with softly blurred background (bokeh), natural warm lighting, ultra-realistic, 8k professional photography, shoulder-up framing.';
+
+const HF_MODEL = 'black-forest-labs/FLUX.1-schnell';
+const HF_API = 'https://api-inference.huggingface.co/models/' + HF_MODEL;
 
 const $ = id => document.getElementById(id);
 
@@ -40,7 +38,9 @@ const toastEl = $('toast');
 /* =============================================================
    STATE
    ============================================================= */
-let photo = null;
+let photo = null;          // foto original do usuário
+let cutout = null;         // foto sem fundo (recortada)
+let aiBackground = null;   // fundo gerado pela IA
 let frameImg = null;
 let frames = [];
 let frameIdx = 0;
@@ -52,6 +52,18 @@ let pinchStart = 0, pinchZoomStart = 1, pinchCX = 0, pinchCY = 0;
 let cameraStream = null;
 let segmenter = null;
 
+let selectedPrompt = 'professional studio photography, blurred bokeh background, soft warm lighting, neutral colors, ultra realistic, high quality';
+
+/* =============================================================
+   TOKEN
+   ============================================================= */
+function getToken() {
+  return localStorage.getItem('hf_token') || '';
+}
+function setToken(t) {
+  localStorage.setItem('hf_token', t);
+}
+
 /* =============================================================
    HELPERS
    ============================================================= */
@@ -59,7 +71,7 @@ function toast(msg, type = '') {
   toastEl.textContent = msg;
   toastEl.className = 'toast show ' + type;
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => toastEl.classList.remove('show'), 3000);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 3500);
 }
 
 function loading(on, text = 'Processando...', pct = 0) {
@@ -73,6 +85,110 @@ function setProgress(pct) {
 }
 
 /* =============================================================
+   IA — Gera fundo profissional
+   ============================================================= */
+async function generateBackground() {
+  const token = getToken();
+  if (!token) {
+    openConfig();
+    toast('Configure seu token do Hugging Face', 'info');
+    return;
+  }
+  if (!photo && !cutout) {
+    toast('Carregue uma foto primeiro', 'err');
+    return;
+  }
+
+  loading(true, '🎨 IA gerando fundo... (15-30s)', 5);
+
+  try {
+    console.log('[AI] Modelo:', HF_MODEL);
+    console.log('[AI] Prompt:', selectedPrompt);
+
+    // Simula progresso
+    let pct = 5;
+    const interval = setInterval(() => {
+      pct = Math.min(pct + 3, 90);
+      setProgress(pct);
+    }, 1200);
+
+    // Chama HF Inference API
+    const response = await fetch(HF_API, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json',
+        'x-use-cache': 'false'
+      },
+      body: JSON.stringify({
+        inputs: selectedPrompt + ', high quality, 8k, professional',
+        parameters: {
+          width: 1024,
+          height: 1024,
+          num_inference_steps: 4,
+          guidance_scale: 3.5
+        }
+      })
+    });
+
+    clearInterval(interval);
+
+    if (!response.ok) {
+      let errMsg = 'Erro ' + response.status;
+
+      if (response.status === 401) {
+        errMsg = 'Token inválido. Verifique em ⚙️';
+      } else if (response.status === 503) {
+        errMsg = 'Modelo carregando. Aguarde 20s e tente novamente.';
+      } else if (response.status === 429) {
+        errMsg = 'Muitas requisições. Aguarde 1 minuto.';
+      } else {
+        try {
+          const errJson = await response.json();
+          if (errJson.error) errMsg = errJson.error;
+        } catch (e) {}
+      }
+
+      throw new Error(errMsg);
+    }
+
+    setProgress(95);
+
+    // Recebe a imagem como blob
+    const blob = await response.blob();
+    console.log('[AI] Blob recebido:', blob.size, 'bytes, type:', blob.type);
+
+    if (blob.size < 1000) {
+      throw new Error('Resposta muito pequena — modelo pode estar carregando');
+    }
+
+    // Converte para imagem
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+
+    await new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(blob);
+      img.onload = () => { URL.revokeObjectURL(url); resolve(); };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Erro ao carregar imagem')); };
+      img.src = url;
+    });
+
+    aiBackground = img;
+    setProgress(100);
+    loading(false);
+
+    // Re-renderiza
+    render();
+    toast('✨ Fundo gerado!', 'ok');
+
+  } catch (err) {
+    console.error('[AI] Erro:', err);
+    loading(false);
+    toast('Erro: ' + err.message, 'err');
+  }
+}
+
+/* =============================================================
    DETECÇÃO DE MOLDURAS
    ============================================================= */
 function frameUrl(i) {
@@ -83,7 +199,7 @@ function testImage(url) {
   return new Promise(resolve => {
     const img = new Image();
     let done = false;
-    const t = setTimeout(() => { if (!done) { done = true; resolve(false); } }, 3000);
+    const t = setTimeout(() => { if (!done) { done = true; resolve(false); } }, 2500);
     img.onload = () => { if (!done) { done = true; clearTimeout(t); resolve(img.naturalWidth > 0); } };
     img.onerror = () => { if (!done) { done = true; clearTimeout(t); resolve(false); } };
     img.src = url;
@@ -104,7 +220,6 @@ async function initFrames(forceRefresh = false) {
   framesEl.innerHTML = '<div style="padding:20px;color:#8B93A1;font-size:12px">Detectando...</div>';
 
   let list = [];
-
   if (!forceRefresh) {
     try {
       const cached = JSON.parse(localStorage.getItem('frames_cache') || 'null');
@@ -162,16 +277,25 @@ function loadFrame() {
 }
 
 /* =============================================================
-   RENDER — Moldura ATRÁS, foto NA FRENTE
+   RENDER
+   Ordem: fundo IA → foto recortada → moldura
    ============================================================= */
 function render() {
   ctx.clearRect(0, 0, SIZE, SIZE);
+
+  // 1. Fundo branco base
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, SIZE, SIZE);
 
-  // 1. Foto
-  if (photo) {
-    const aspect = photo.width / photo.height;
+  // 2. Fundo gerado por IA (se existir)
+  if (aiBackground) {
+    ctx.drawImage(aiBackground, 0, 0, SIZE, SIZE);
+  }
+
+  // 3. Foto do usuário
+  const imgToDraw = cutout || photo;
+  if (imgToDraw) {
+    const aspect = imgToDraw.width / imgToDraw.height;
     let dw, dh;
     if (aspect > 1) { dh = SIZE; dw = SIZE * aspect; }
     else { dw = SIZE; dh = SIZE / aspect; }
@@ -184,22 +308,23 @@ function render() {
     ctx.beginPath();
     ctx.rect(0, 0, SIZE, SIZE);
     ctx.clip();
-    ctx.drawImage(photo, x, y, fw, fh);
+    ctx.drawImage(imgToDraw, x, y, fw, fh);
     ctx.restore();
   }
 
-  // 2. Moldura por cima
+  // 4. Moldura por cima
   if (frameImg && frameImg.complete && frameImg.naturalWidth > 0) {
     ctx.drawImage(frameImg, 0, 0, SIZE, SIZE);
   }
 
   // UI
-  emptyEl.style.display = photo ? 'none' : 'flex';
-  zoomWrap.hidden = !photo;
-  $('reset').hidden = !photo;
-  $('cut').disabled = !photo;
-  $('save').disabled = !photo;
-  $('generate').disabled = !photo;
+  const hasPhoto = !!(photo || cutout);
+  emptyEl.style.display = hasPhoto ? 'none' : 'flex';
+  zoomWrap.hidden = !hasPhoto;
+  $('reset').hidden = !hasPhoto;
+  $('cut').disabled = !hasPhoto;
+  $('save').disabled = !hasPhoto;
+  $('generateBg').disabled = !hasPhoto;
 }
 
 /* =============================================================
@@ -216,6 +341,8 @@ function loadPhoto(file) {
     const img = new Image();
     img.onload = () => {
       photo = img;
+      cutout = null;         // limpa recorte anterior
+      aiBackground = null;   // limpa fundo IA anterior
       zoom = 1; panX = 0; panY = 0;
       zoomInput.value = 1;
       zoomLabel.textContent = '100%';
@@ -231,100 +358,7 @@ function loadPhoto(file) {
 }
 
 /* =============================================================
-   IA DE GERAÇÃO (Pollinations kontext - preserva identidade)
-   ============================================================= */
-async function generateWithAI() {
-  if (!photo) return;
-
-  loading(true, 'Preparando...', 10);
-
-  try {
-    // 1. Redimensiona a foto para envio (máx 512px, economiza tempo)
-    const MAX = 512;
-    const s = Math.min(1, MAX / Math.max(photo.width, photo.height));
-    const w = Math.round(photo.width * s);
-    const h = Math.round(photo.height * s);
-
-    const off = document.createElement('canvas');
-    off.width = w;
-    off.height = h;
-    off.getContext('2d').drawImage(photo, 0, 0, w, h);
-    const dataUrl = off.toDataURL('image/jpeg', 0.85);
-
-    loading(true, 'Enviando imagem...', 25);
-
-    // 2. Faz upload para a Pollinations (aceita data URL direto via POST)
-    // A Pollinations suporta envio via POST em /upload
-    const uploadRes = await fetch('https://image.pollinations.ai/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: dataUrl })
-    });
-
-    let imageUrl = dataUrl; // fallback: usar data URL direto
-
-    if (uploadRes.ok) {
-      try {
-        const uploadData = await uploadRes.json();
-        if (uploadData.url) {
-          imageUrl = uploadData.url;
-          console.log('[AI] Upload OK:', imageUrl);
-        }
-      } catch (e) {
-        console.log('[AI] Upload falhou, usando dataURL direto');
-      }
-    }
-
-    loading(true, '🎨 IA gerando... (30-60s)', 40);
-
-    // 3. Monta URL da Pollinations com modo kontext (image-to-image)
-    const encodedPrompt = encodeURIComponent(AI_PROMPT);
-    const seed = Math.floor(Math.random() * 1000000);
-    const aiUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}` +
-                  `?model=kontext&image=${encodeURIComponent(imageUrl)}` +
-                  `&width=1024&height=1024&seed=${seed}&nologo=true`;
-
-    console.log('[AI] URL:', aiUrl);
-
-    // Simula progresso
-    let pct = 40;
-    const progressInterval = setInterval(() => {
-      pct = Math.min(pct + 2, 90);
-      setProgress(pct);
-    }, 1500);
-
-    // 4. Carrega resultado
-    const newImg = await new Promise((resolve, reject) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      const timeout = setTimeout(() => reject(new Error('Timeout na geração')), 120000);
-      img.onload = () => { clearTimeout(timeout); resolve(img); };
-      img.onerror = () => { clearTimeout(timeout); reject(new Error('Falha na geração')); };
-      img.src = aiUrl;
-    });
-
-    clearInterval(progressInterval);
-    setProgress(100);
-
-    // 5. Aplica resultado
-    photo = newImg;
-    zoom = 1; panX = 0; panY = 0;
-    zoomInput.value = 1;
-    zoomLabel.textContent = '100%';
-
-    loading(false);
-    render();
-    toast('✨ Imagem gerada com IA!', 'ok');
-
-  } catch (err) {
-    console.error('[AI] Erro:', err);
-    loading(false);
-    toast('Erro na IA: ' + err.message, 'err');
-  }
-}
-
-/* =============================================================
-   RECORTAR FUNDO (MediaPipe)
+   RECORTAR FUNDO
    ============================================================= */
 async function initSegmenter() {
   if (segmenter) return segmenter;
@@ -344,7 +378,9 @@ async function initSegmenter() {
 }
 
 async function removeBg() {
-  if (!photo) return;
+  const source = photo;
+  if (!source) return;
+
   loading(true, 'Analisando...', 20);
 
   try {
@@ -352,15 +388,15 @@ async function removeBg() {
     setProgress(40);
 
     const MAX = 1024;
-    const s = Math.min(1, MAX / Math.max(photo.width, photo.height));
-    const w = Math.round(photo.width * s);
-    const h = Math.round(photo.height * s);
+    const s = Math.min(1, MAX / Math.max(source.width, source.height));
+    const w = Math.round(source.width * s);
+    const h = Math.round(source.height * s);
 
     const off = document.createElement('canvas');
     off.width = w;
     off.height = h;
     const octx = off.getContext('2d');
-    octx.drawImage(photo, 0, 0, w, h);
+    octx.drawImage(source, 0, 0, w, h);
 
     loading(true, 'Removendo fundo...', 60);
 
@@ -388,7 +424,8 @@ async function removeBg() {
 
     const newImg = new Image();
     newImg.onload = () => {
-      photo = newImg;
+      cutout = newImg;
+      photo = newImg;   // a foto ativa passa a ser a recortada
       loading(false);
       render();
       toast('✨ Fundo removido!', 'ok');
@@ -464,6 +501,8 @@ async function openCamera() {
       img.onload = () => {
         stopCamera();
         photo = img;
+        cutout = null;
+        aiBackground = null;
         zoom = 1; panX = 0; panY = 0;
         zoomInput.value = 1;
         zoomLabel.textContent = '100%';
@@ -481,10 +520,10 @@ async function openCamera() {
 }
 
 /* =============================================================
-   SALVAR / COMPARTILHAR
+   SALVAR
    ============================================================= */
 async function saveImage() {
-  if (!photo) return;
+  if (!photo && !cutout) return;
   const btn = $('save');
   const original = btn.innerHTML;
   btn.disabled = true;
@@ -531,10 +570,25 @@ async function saveImage() {
 }
 
 /* =============================================================
+   CONFIG MODAL
+   ============================================================= */
+function openConfig() {
+  const modal = $('configModal');
+  const input = $('hfToken');
+  input.value = getToken();
+  modal.classList.add('active');
+  setTimeout(() => input.focus(), 100);
+}
+
+function closeConfig() {
+  $('configModal').classList.remove('active');
+}
+
+/* =============================================================
    GESTOS
    ============================================================= */
 stage.addEventListener('touchstart', e => {
-  if (!photo) return;
+  if (!photo && !cutout) return;
   const t = e.touches;
   if (t.length === 1) {
     dragging = true;
@@ -553,7 +607,7 @@ stage.addEventListener('touchstart', e => {
 }, { passive: true });
 
 stage.addEventListener('touchmove', e => {
-  if (!photo) return;
+  if (!photo && !cutout) return;
   const t = e.touches;
   const r = stage.getBoundingClientRect();
   const sx = SIZE / r.width;
@@ -579,10 +633,9 @@ stage.addEventListener('touchmove', e => {
 
 stage.addEventListener('touchend', () => { dragging = false; });
 
-/* Mouse */
 let mouseDown = false;
 stage.addEventListener('mousedown', e => {
-  if (!photo) return;
+  if (!photo && !cutout) return;
   mouseDown = true;
   startX = e.clientX;
   startY = e.clientY;
@@ -590,7 +643,7 @@ stage.addEventListener('mousedown', e => {
   lastPanY = panY;
 });
 window.addEventListener('mousemove', e => {
-  if (!mouseDown || !photo) return;
+  if (!mouseDown || (!photo && !cutout)) return;
   const r = stage.getBoundingClientRect();
   panX = lastPanX + (e.clientX - startX) * (SIZE / r.width);
   panY = lastPanY + (e.clientY - startY) * (SIZE / r.height);
@@ -598,9 +651,8 @@ window.addEventListener('mousemove', e => {
 });
 window.addEventListener('mouseup', () => { mouseDown = false; });
 
-/* Wheel */
 stage.addEventListener('wheel', e => {
-  if (!photo) return;
+  if (!photo && !cutout) return;
   e.preventDefault();
   const delta = e.deltaY > 0 ? -0.08 : 0.08;
   zoom = Math.min(Math.max(zoom + delta, 0.5), 4);
@@ -609,16 +661,12 @@ stage.addEventListener('wheel', e => {
   render();
 }, { passive: false });
 
-/* Slider */
 zoomInput.addEventListener('input', e => {
   zoom = parseFloat(e.target.value);
   zoomLabel.textContent = Math.round(zoom * 100) + '%';
   render();
 });
 
-/* =============================================================
-   DRAG & DROP
-   ============================================================= */
 ['dragenter', 'dragover'].forEach(ev => {
   stage.addEventListener(ev, e => { e.preventDefault(); });
 });
@@ -637,12 +685,41 @@ $('file').addEventListener('change', function() {
 
 $('camera').addEventListener('click', openCamera);
 $('cut').addEventListener('click', removeBg);
-$('generate').addEventListener('click', generateWithAI);
 $('save').addEventListener('click', saveImage);
+$('generateBg').addEventListener('click', generateBackground);
+$('configAI').addEventListener('click', openConfig);
+$('closeConfig').addEventListener('click', closeConfig);
+$('saveConfig').addEventListener('click', () => {
+  const t = $('hfToken').value.trim();
+  if (!t.startsWith('hf_')) {
+    toast('Token deve começar com "hf_"', 'err');
+    return;
+  }
+  setToken(t);
+  closeConfig();
+  toast('✅ Token salvo!', 'ok');
+});
+
+// Presets
+document.querySelectorAll('.preset').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.preset').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedPrompt = btn.dataset.prompt;
+    console.log('[AI] Prompt:', selectedPrompt);
+  });
+});
+
+// Fecha modal clicando fora
+$('configModal').addEventListener('click', e => {
+  if (e.target === $('configModal')) closeConfig();
+});
 
 $('reset').addEventListener('click', () => {
   stopCamera();
   photo = null;
+  cutout = null;
+  aiBackground = null;
   zoom = 1; panX = 0; panY = 0;
   $('file').value = '';
   render();
@@ -669,3 +746,10 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
    ============================================================= */
 initFrames();
 render();
+
+// Se não tem token, sugere configurar no primeiro uso
+if (!getToken()) {
+  setTimeout(() => {
+    toast('💡 Configure seu token HF em ⚙️ para usar a IA', 'info');
+  }, 2000);
+}
