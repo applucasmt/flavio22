@@ -233,3 +233,120 @@ video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:
 .toast.ok{border-color:rgba(34,197,94,.4)}
 .toast.err{border-color:rgba(239,68,68,.4)}
 .toast.info{border-color:rgba(14,165,233,.4)}
+
+/* ============================================================
+   AI SECTION (novos estilos)
+   ============================================================ */
+.ai-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--card-2);
+  border: 1px solid var(--border);
+}
+
+.ai-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-sub);
+  text-transform: uppercase;
+  letter-spacing: .8px;
+}
+
+.mini-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: background .2s;
+}
+.mini-btn:hover { background: rgba(255,255,255,.06); }
+
+.ai-presets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.preset {
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 8px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all .15s;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.preset:hover {
+  background: rgba(139,92,246,.15);
+  border-color: rgba(139,92,246,.4);
+}
+.preset.active {
+  background: linear-gradient(135deg, rgba(139,92,246,.25), rgba(236,72,153,.2));
+  border-color: var(--purple);
+  color: #fff;
+}
+
+/* Modal */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(0,0,0,.75);
+  backdrop-filter: blur(8px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal.active { display: flex; }
+
+.modal-content {
+  background: linear-gradient(180deg, var(--card), var(--card-2));
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 24px 22px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.7);
+  animation: modalIn .3s cubic-bezier(.2,.9,.3,1.15);
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.modal h2 {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  letter-spacing: -.3px;
+}
+
+.modal input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: var(--text);
+  font-family: monospace;
+  font-size: 13px;
+  outline: none;
+  transition: border-color .2s;
+}
+.modal input:focus { border-color: var(--light-green); }
