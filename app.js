@@ -1,6 +1,7 @@
 /* =============================================================
-   MOLDURAS IA — App com Hugging Face
-   Ordem correta: Fundo IA → Moldura (atrás) → Foto (na frente)
+   MOLDURAS IA — Hugging Face Inference Providers
+   Endpoint correto (2025): router.huggingface.co
+   Modelo: FLUX.1-dev (schnell foi descontinuado)
    ============================================================= */
 
 import {
@@ -14,8 +15,11 @@ import {
 const SIZE = 1080;
 const MAX_FRAMES = 50;
 
-// ✅ NOVO domínio da API Hugging Face (mudou em 2025)
-const HF_MODEL = 'black-forest-labs/FLUX.1-schnell';
+// ✅ Modelo válido (schnell foi descontinuado)
+const HF_MODEL = 'black-forest-labs/FLUX.1-dev';
+const HF_PROVIDER = 'fal-ai';  // Provedor que suporta text-to-image
+
+// ✅ Endpoint correto (router novo)
 const HF_API = 'https://router.huggingface.co/hf-inference/models/' + HF_MODEL;
 
 const $ = id => document.getElementById(id);
@@ -53,7 +57,7 @@ let pinchStart = 0, pinchZoomStart = 1, pinchCX = 0, pinchCY = 0;
 let cameraStream = null;
 let segmenter = null;
 
-let selectedPrompt = 'professional studio photography, blurred bokeh background, soft warm lighting, neutral colors, ultra realistic, high quality';
+let selectedPrompt = 'professional studio photography backdrop, empty blurred bokeh background, soft warm lighting, neutral gray colors, no people, no person, no face, ultra realistic, high quality';
 
 /* =============================================================
    TOKEN
@@ -86,7 +90,7 @@ function setProgress(pct) {
 }
 
 /* =============================================================
-   IA — Gera fundo profissional
+   IA — Hugging Face Inference
    ============================================================= */
 async function generateBackground() {
   const token = getToken();
@@ -100,20 +104,21 @@ async function generateBackground() {
     return;
   }
 
-  loading(true, '🎨 IA gerando fundo... (15-30s)', 5);
+  loading(true, '🎨 IA gerando fundo... (20-40s)', 5);
 
   try {
     console.log('[AI] Modelo:', HF_MODEL);
+    console.log('[AI] Provider:', HF_PROVIDER);
     console.log('[AI] API:', HF_API);
     console.log('[AI] Prompt:', selectedPrompt);
 
     let pct = 5;
     const interval = setInterval(() => {
-      pct = Math.min(pct + 3, 90);
+      pct = Math.min(pct + 2, 90);
       setProgress(pct);
-    }, 1200);
+    }, 1000);
 
-    // ✅ Chama HF Router (novo endpoint)
+    // ✅ Chamada correta conforme documentação
     const response = await fetch(HF_API, {
       method: 'POST',
       headers: {
@@ -126,8 +131,8 @@ async function generateBackground() {
         parameters: {
           width: 1024,
           height: 1024,
-          num_inference_steps: 4,
-          guidance_scale: 3.5
+          num_inference_steps: 25,
+          guidance_scale: 7.5
         }
       })
     });
@@ -138,13 +143,17 @@ async function generateBackground() {
       let errMsg = 'Erro ' + response.status;
 
       if (response.status === 401) {
-        errMsg = 'Token inválido. Verifique em ⚙️';
+        errMsg = 'Token inválido. Reconfigure em ⚙️';
+      } else if (response.status === 403) {
+        errMsg = 'Token sem permissão. Crie token "Fine-grained" com permissão "Make calls to Inference Providers"';
+      } else if (response.status === 404) {
+        errMsg = 'Modelo não encontrado.';
+      } else if (response.status === 410) {
+        errMsg = 'Modelo descontinuado.';
       } else if (response.status === 503) {
         errMsg = 'Modelo carregando. Aguarde 20s e tente novamente.';
       } else if (response.status === 429) {
         errMsg = 'Muitas requisições. Aguarde 1 minuto.';
-      } else if (response.status === 404) {
-        errMsg = 'Modelo não encontrado. Verifique o nome.';
       } else {
         try {
           const errJson = await response.json();
@@ -158,7 +167,7 @@ async function generateBackground() {
     setProgress(95);
 
     const blob = await response.blob();
-    console.log('[AI] Blob recebido:', blob.size, 'bytes, type:', blob.type);
+    console.log('[AI] Blob recebido:', blob.size, 'bytes');
 
     if (blob.size < 1000) {
       throw new Error('Resposta muito pequena — modelo pode estar carregando');
@@ -177,7 +186,6 @@ async function generateBackground() {
     aiBackground = img;
     setProgress(100);
     loading(false);
-
     render();
     toast('✨ Fundo gerado!', 'ok');
 
@@ -277,31 +285,24 @@ function loadFrame() {
 }
 
 /* =============================================================
-   RENDER — ORDEM CORRIGIDA
-   
-   1. Fundo branco
-   2. Fundo IA (se existir)
-   3. MOLDURA ← fica atrás da foto
-   4. FOTO do usuário ← fica na frente (aparece no centro da moldura)
+   RENDER — Ordem: Fundo IA → Moldura (atrás) → Foto (frente)
    ============================================================= */
 function render() {
   ctx.clearRect(0, 0, SIZE, SIZE);
 
-  // 1. Fundo branco base
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, SIZE, SIZE);
 
-  // 2. Fundo gerado por IA
   if (aiBackground) {
     ctx.drawImage(aiBackground, 0, 0, SIZE, SIZE);
   }
 
-  // 3. ✅ MOLDURA PRIMEIRO (fica atrás da foto)
+  // Moldura ATRÁS
   if (frameImg && frameImg.complete && frameImg.naturalWidth > 0) {
     ctx.drawImage(frameImg, 0, 0, SIZE, SIZE);
   }
 
-  // 4. ✅ FOTO POR ÚLTIMO (fica na frente, aparece no centro transparente da moldura)
+  // Foto NA FRENTE
   const imgToDraw = cutout || photo;
   if (imgToDraw) {
     const aspect = imgToDraw.width / imgToDraw.height;
@@ -321,7 +322,6 @@ function render() {
     ctx.restore();
   }
 
-  // UI
   const hasPhoto = !!(photo || cutout);
   emptyEl.style.display = hasPhoto ? 'none' : 'flex';
   zoomWrap.hidden = !hasPhoto;
@@ -681,6 +681,29 @@ stage.addEventListener('drop', e => {
 });
 
 /* =============================================================
+   PRESETS
+   ============================================================= */
+const PRESETS = {
+  studio: 'professional studio photography backdrop, empty blurred bokeh background, soft warm lighting, neutral gray colors, no people, no person, no face, no silhouette, ultra realistic, high quality',
+  park: 'outdoor park with trees, blurred green foliage bokeh background, natural daylight, warm golden hour lighting, no people, no person, no face, empty scene, ultra realistic',
+  office: 'modern office interior, softly blurred background, professional corporate atmosphere, warm lighting, no people, no person, no face, empty room, ultra realistic',
+  gradient: 'minimalist gradient background, soft pastel colors, clean aesthetic, blurred, no people, no person, no face, ultra realistic',
+  neutral: 'elegant studio backdrop, soft neutral gray, professional photography, blurred vignette, no people, no person, no face, empty background, ultra realistic',
+  beach: 'tropical beach at sunset, blurred ocean waves, warm golden lighting, palm trees bokeh, no people, no person, no face, empty scene, ultra realistic'
+};
+
+document.querySelectorAll('.preset').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.preset').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    const key = btn.dataset.preset || 'studio';
+    selectedPrompt = PRESETS[key] || PRESETS.studio;
+    console.log('[AI] Preset:', key);
+  });
+});
+
+/* =============================================================
    BOTÕES
    ============================================================= */
 $('file').addEventListener('change', function() {
@@ -702,15 +725,6 @@ $('saveConfig').addEventListener('click', () => {
   setToken(t);
   closeConfig();
   toast('✅ Token salvo!', 'ok');
-});
-
-document.querySelectorAll('.preset').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.preset').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    selectedPrompt = btn.dataset.prompt;
-    console.log('[AI] Prompt:', selectedPrompt);
-  });
 });
 
 $('configModal').addEventListener('click', e => {
