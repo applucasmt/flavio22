@@ -500,4 +500,172 @@ async function saveImage() {
     if (isMobile && navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
         await navigator.share({ files: [file], title: 'Minha Foto' });
-        toast('Compartilhado!
+        toast('Compartilhado!', 'ok');
+      } catch (err) {
+        if (err.name !== 'AbortError') download(blob, fileName);
+      }
+    } else {
+      download(blob, fileName);
+    }
+  } catch (err) {
+    toast('Erro ao salvar', 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+
+  function download(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 200);
+    toast('Imagem salva!', 'ok');
+  }
+}
+
+/* =============================================================
+   GESTOS
+   ============================================================= */
+stage.addEventListener('touchstart', e => {
+  if (!photo) return;
+  const t = e.touches;
+  if (t.length === 1) {
+    dragging = true;
+    startX = t[0].clientX;
+    startY = t[0].clientY;
+    lastPanX = panX;
+    lastPanY = panY;
+  } else if (t.length === 2) {
+    dragging = false;
+    pinchStart = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    pinchZoomStart = zoom;
+    const r = stage.getBoundingClientRect();
+    pinchCX = ((t[0].clientX + t[1].clientX) / 2 - r.left) * (SIZE / r.width) - SIZE / 2;
+    pinchCY = ((t[0].clientY + t[1].clientY) / 2 - r.top) * (SIZE / r.height) - SIZE / 2;
+  }
+}, { passive: true });
+
+stage.addEventListener('touchmove', e => {
+  if (!photo) return;
+  const t = e.touches;
+  const r = stage.getBoundingClientRect();
+  const sx = SIZE / r.width;
+  const sy = SIZE / r.height;
+
+  if (t.length === 1 && dragging) {
+    panX = lastPanX + (t[0].clientX - startX) * sx;
+    panY = lastPanY + (t[0].clientY - startY) * sy;
+    render();
+  } else if (t.length === 2) {
+    const d = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const scale = d / pinchStart;
+    const newZoom = Math.min(Math.max(pinchZoomStart * scale, 0.5), 4);
+    const dz = newZoom - pinchZoomStart;
+    panX -= dz * pinchCX;
+    panY -= dz * pinchCY;
+    zoom = newZoom;
+    zoomInput.value = zoom;
+    zoomLabel.textContent = Math.round(zoom * 100) + '%';
+    render();
+  }
+}, { passive: true });
+
+stage.addEventListener('touchend', () => { dragging = false; });
+
+/* Mouse */
+let mouseDown = false;
+stage.addEventListener('mousedown', e => {
+  if (!photo) return;
+  mouseDown = true;
+  startX = e.clientX;
+  startY = e.clientY;
+  lastPanX = panX;
+  lastPanY = panY;
+});
+window.addEventListener('mousemove', e => {
+  if (!mouseDown || !photo) return;
+  const r = stage.getBoundingClientRect();
+  panX = lastPanX + (e.clientX - startX) * (SIZE / r.width);
+  panY = lastPanY + (e.clientY - startY) * (SIZE / r.height);
+  render();
+});
+window.addEventListener('mouseup', () => { mouseDown = false; });
+
+/* Wheel */
+stage.addEventListener('wheel', e => {
+  if (!photo) return;
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? -0.08 : 0.08;
+  zoom = Math.min(Math.max(zoom + delta, 0.5), 4);
+  zoomInput.value = zoom;
+  zoomLabel.textContent = Math.round(zoom * 100) + '%';
+  render();
+}, { passive: false });
+
+/* Slider */
+zoomInput.addEventListener('input', e => {
+  zoom = parseFloat(e.target.value);
+  zoomLabel.textContent = Math.round(zoom * 100) + '%';
+  render();
+});
+
+/* =============================================================
+   DRAG & DROP
+   ============================================================= */
+['dragenter', 'dragover'].forEach(ev => {
+  stage.addEventListener(ev, e => { e.preventDefault(); });
+});
+stage.addEventListener('drop', e => {
+  e.preventDefault();
+  const file = e.dataTransfer?.files?.[0];
+  if (file) loadPhoto(file);
+});
+
+/* =============================================================
+   BOTÕES
+   ============================================================= */
+$('file').addEventListener('change', function() {
+  if (this.files?.[0]) loadPhoto(this.files[0]);
+});
+
+$('camera').addEventListener('click', openCamera);
+$('cut').addEventListener('click', removeBg);
+$('generate').addEventListener('click', generateWithAI);
+$('save').addEventListener('click', saveImage);
+
+$('reset').addEventListener('click', () => {
+  stopCamera();
+  photo = null;
+  zoom = 1; panX = 0; panY = 0;
+  $('file').value = '';
+  render();
+  toast('Foto removida', 'info');
+});
+
+$('refresh').addEventListener('click', async () => {
+  toast('🔄 Buscando novas molduras...', 'info');
+  await initFrames(true);
+  toast('✨ ' + frames.length + ' molduras encontradas', 'ok');
+});
+
+/* =============================================================
+   SERVICE WORKER
+   ============================================================= */
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
+
+/* =============================================================
+   BOOT
+   ============================================================= */
+initFrames();
+render();
