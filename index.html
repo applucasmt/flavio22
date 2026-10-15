@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="Criador de molduras com IA — grátis, sem login">
+<meta name="description" content="Criador de molduras com IA — grátis, open source">
 
 <title>Molduras IA</title>
 
@@ -16,7 +16,7 @@
 
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="preconnect" href="https://storage.googleapis.com">
-<link rel="preconnect" href="https://image.pollinations.ai">
+<link rel="preconnect" href="https://api-inference.huggingface.co">
 
 <link rel="stylesheet" href="style.css">
 </head>
@@ -27,12 +27,11 @@
   <header>
     <div>
       <h1>Molduras IA</h1>
-      <small>Powered by open source</small>
+      <small>Powered by Hugging Face</small>
     </div>
     <span class="badge">✨ IA</span>
   </header>
 
-  <!-- Canvas principal -->
   <div class="stage" id="stage">
     <canvas id="canvas" width="1080" height="1080"></canvas>
 
@@ -53,20 +52,17 @@
     </div>
   </div>
 
-  <!-- Zoom -->
   <div class="zoom" id="zoomWrap" hidden>
     <input type="range" id="zoom" min="0.5" max="4" step="0.01" value="1">
     <span id="zoomLabel">100%</span>
   </div>
 
-  <!-- Molduras -->
   <div class="frames-header">
     <span>Molduras</span>
     <button id="refresh" title="Buscar novas">🔄</button>
   </div>
   <div class="frames" id="frames"></div>
 
-  <!-- Ações principais -->
   <div class="actions">
     <label class="btn btn-light">
       📁 Galeria
@@ -75,9 +71,24 @@
     <button class="btn btn-yellow" id="camera">📷 Câmera</button>
   </div>
 
-  <!-- IA + recorte -->
-  <button class="btn btn-purple" id="generate" disabled>
-    ✨ Gerar versão profissional com IA
+  <!-- NOVO: Seletor de fundo IA -->
+  <div class="ai-section">
+    <div class="ai-header">
+      <span>🎨 Fundo com IA</span>
+      <button id="configAI" title="Configurar token" class="mini-btn">⚙️</button>
+    </div>
+    <div class="ai-presets" id="aiPresets">
+      <button class="preset" data-prompt="professional studio photography, blurred bokeh background, soft warm lighting, neutral colors, ultra realistic, high quality">💼 Estúdio</button>
+      <button class="preset" data-prompt="outdoor park with trees, blurred green foliage bokeh, natural daylight, warm golden hour lighting, ultra realistic">🌳 Parque</button>
+      <button class="preset" data-prompt="modern office interior, softly blurred background, professional corporate atmosphere, warm lighting, ultra realistic">🏢 Escritório</button>
+      <button class="preset" data-prompt="minimalist gradient background, soft pastel colors, clean aesthetic, blurred, ultra realistic">🎨 Gradiente</button>
+      <button class="preset" data-prompt="elegant studio backdrop, soft neutral gray, professional photography, blurred vignette, ultra realistic">📷 Neutro</button>
+      <button class="preset" data-prompt="tropical beach at sunset, blurred ocean waves, warm golden lighting, palm trees bokeh, ultra realistic">🏖️ Praia</button>
+    </div>
+  </div>
+
+  <button class="btn btn-purple" id="generateBg" disabled>
+    ✨ Gerar fundo profissional com IA
   </button>
 
   <button class="btn btn-blue" id="cut" disabled>
@@ -92,6 +103,22 @@
     🗑️ Remover foto
   </button>
 
+</div>
+
+<!-- Modal de configuração -->
+<div class="modal" id="configModal">
+  <div class="modal-content">
+    <h2>⚙️ Configurar Hugging Face</h2>
+    <p style="font-size:13px;color:var(--text-sub);line-height:1.5;margin-bottom:16px">
+      Para usar a IA de geração, cole seu token do Hugging Face.<br>
+      <a href="https://huggingface.co/settings/tokens" target="_blank" style="color:var(--light-green)">Obter token grátis →</a>
+    </p>
+    <input type="password" id="hfToken" placeholder="hf_xxxxxxxxxxxxxxxx" autocomplete="off">
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-ghost" id="closeConfig" style="flex:1">Cancelar</button>
+      <button class="btn btn-green" id="saveConfig" style="flex:1">Salvar</button>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
