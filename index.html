@@ -6,8 +6,7 @@
 <meta name="theme-color" content="#0A0C10">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="Criador de molduras com IA — grátis, open source">
+<meta name="description" content="Criador de molduras com IA — Hugging Face">
 
 <title>Molduras IA</title>
 
@@ -16,7 +15,7 @@
 
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="preconnect" href="https://storage.googleapis.com">
-<link rel="preconnect" href="https://api-inference.huggingface.co">
+<link rel="preconnect" href="https://router.huggingface.co">
 
 <link rel="stylesheet" href="style.css">
 </head>
@@ -71,19 +70,18 @@
     <button class="btn btn-yellow" id="camera">📷 Câmera</button>
   </div>
 
-  <!-- NOVO: Seletor de fundo IA -->
   <div class="ai-section">
     <div class="ai-header">
       <span>🎨 Fundo com IA</span>
       <button id="configAI" title="Configurar token" class="mini-btn">⚙️</button>
     </div>
-    <div class="ai-presets" id="aiPresets">
-      <button class="preset" data-prompt="professional studio photography, blurred bokeh background, soft warm lighting, neutral colors, ultra realistic, high quality">💼 Estúdio</button>
-      <button class="preset" data-prompt="outdoor park with trees, blurred green foliage bokeh, natural daylight, warm golden hour lighting, ultra realistic">🌳 Parque</button>
-      <button class="preset" data-prompt="modern office interior, softly blurred background, professional corporate atmosphere, warm lighting, ultra realistic">🏢 Escritório</button>
-      <button class="preset" data-prompt="minimalist gradient background, soft pastel colors, clean aesthetic, blurred, ultra realistic">🎨 Gradiente</button>
-      <button class="preset" data-prompt="elegant studio backdrop, soft neutral gray, professional photography, blurred vignette, ultra realistic">📷 Neutro</button>
-      <button class="preset" data-prompt="tropical beach at sunset, blurred ocean waves, warm golden lighting, palm trees bokeh, ultra realistic">🏖️ Praia</button>
+    <div class="ai-presets">
+      <button class="preset active" data-preset="studio">💼 Estúdio</button>
+      <button class="preset" data-preset="park">🌳 Parque</button>
+      <button class="preset" data-preset="office">🏢 Escritório</button>
+      <button class="preset" data-preset="gradient">🎨 Gradiente</button>
+      <button class="preset" data-preset="neutral">📷 Neutro</button>
+      <button class="preset" data-preset="beach">🏖️ Praia</button>
     </div>
   </div>
 
@@ -105,13 +103,13 @@
 
 </div>
 
-<!-- Modal de configuração -->
 <div class="modal" id="configModal">
   <div class="modal-content">
     <h2>⚙️ Configurar Hugging Face</h2>
     <p style="font-size:13px;color:var(--text-sub);line-height:1.5;margin-bottom:16px">
-      Para usar a IA de geração, cole seu token do Hugging Face.<br>
-      <a href="https://huggingface.co/settings/tokens" target="_blank" style="color:var(--light-green)">Obter token grátis →</a>
+      Crie um token <strong>Fine-grained</strong> com permissão<br>
+      <strong>"Make calls to Inference Providers"</strong>.<br><br>
+      <a href="https://huggingface.co/settings/tokens/new?ownUserPermissions=inference.serverless.write&tokenType=fineGrained" target="_blank" style="color:var(--light-green)">Criar token correto →</a>
     </p>
     <input type="password" id="hfToken" placeholder="hf_xxxxxxxxxxxxxxxx" autocomplete="off">
     <div style="display:flex;gap:8px;margin-top:16px">
