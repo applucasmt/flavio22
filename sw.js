@@ -1,4 +1,4 @@
-const CACHE = 'molduras-v1';
+const CACHE = 'molduras-v2';
 const FILES = ['./', './index.html', './style.css', './app.js', './manifest.json'];
 
 self.addEventListener('install', e => {
