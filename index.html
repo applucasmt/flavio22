@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0A0C10">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Criador de molduras com IA — grátis, sem login">
+
+<title>Molduras IA</title>
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23006805'/%3E%3Cpath d='M6 6h4v4H6zM14 6h4v4h-4zM6 14h4v4H6zM14 14h4v4h-4z' fill='%2371BF50'/%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.json">
+
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="preconnect" href="https://storage.googleapis.com">
+<link rel="preconnect" href="https://image.pollinations.ai">
+
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app">
+
+  <header>
+    <div>
+      <h1>Molduras IA</h1>
+      <small>Powered by open source</small>
+    </div>
+    <span class="badge">✨ IA</span>
+  </header>
+
+  <!-- Canvas principal -->
+  <div class="stage" id="stage">
+    <canvas id="canvas" width="1080" height="1080"></canvas>
+
+    <div class="empty" id="empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="3" y="3" width="18" height="18" rx="3"/>
+        <circle cx="8.5" cy="8.5" r="1.5"/>
+        <path d="M21 15l-5-5L5 21"/>
+      </svg>
+      <p>Adicione uma foto</p>
+      <small>Toque em Galeria ou Câmera</small>
+    </div>
+
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <span id="loadingText">Processando...</span>
+      <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+    </div>
+  </div>
+
+  <!-- Zoom -->
+  <div class="zoom" id="zoomWrap" hidden>
+    <input type="range" id="zoom" min="0.5" max="4" step="0.01" value="1">
+    <span id="zoomLabel">100%</span>
+  </div>
+
+  <!-- Molduras -->
+  <div class="frames-header">
+    <span>Molduras</span>
+    <button id="refresh" title="Buscar novas">🔄</button>
+  </div>
+  <div class="frames" id="frames"></div>
+
+  <!-- Ações principais -->
+  <div class="actions">
+    <label class="btn btn-light">
+      📁 Galeria
+      <input type="file" id="file" accept="image/*">
+    </label>
+    <button class="btn btn-yellow" id="camera">📷 Câmera</button>
+  </div>
+
+  <!-- IA + recorte -->
+  <button class="btn btn-purple" id="generate" disabled>
+    ✨ Gerar versão profissional com IA
+  </button>
+
+  <button class="btn btn-blue" id="cut" disabled>
+    ✂️ Recortar fundo
+  </button>
+
+  <button class="btn btn-green" id="save" disabled>
+    💾 Salvar / Compartilhar
+  </button>
+
+  <button class="btn btn-ghost" id="reset" hidden>
+    🗑️ Remover foto
+  </button>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module" src="app.js"></script>
+
+</body>
+</html>
