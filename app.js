@@ -1,6 +1,6 @@
 /* =============================================================
    MOLDURAS IA — App com Hugging Face
-   Fluxo: Foto → IA gera fundo → Recorte → Moldura → Salvar
+   Ordem correta: Fundo IA → Moldura (atrás) → Foto (na frente)
    ============================================================= */
 
 import {
@@ -14,8 +14,9 @@ import {
 const SIZE = 1080;
 const MAX_FRAMES = 50;
 
+// ✅ NOVO domínio da API Hugging Face (mudou em 2025)
 const HF_MODEL = 'black-forest-labs/FLUX.1-schnell';
-const HF_API = 'https://api-inference.huggingface.co/models/' + HF_MODEL;
+const HF_API = 'https://router.huggingface.co/hf-inference/models/' + HF_MODEL;
 
 const $ = id => document.getElementById(id);
 
@@ -38,9 +39,9 @@ const toastEl = $('toast');
 /* =============================================================
    STATE
    ============================================================= */
-let photo = null;          // foto original do usuário
-let cutout = null;         // foto sem fundo (recortada)
-let aiBackground = null;   // fundo gerado pela IA
+let photo = null;
+let cutout = null;
+let aiBackground = null;
 let frameImg = null;
 let frames = [];
 let frameIdx = 0;
@@ -70,7 +71,7 @@ function setToken(t) {
 function toast(msg, type = '') {
   toastEl.textContent = msg;
   toastEl.className = 'toast show ' + type;
-  clearTimeout(toast._t);
+  clearTimeout(toastEl._t);
   toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 3500);
 }
 
@@ -103,16 +104,16 @@ async function generateBackground() {
 
   try {
     console.log('[AI] Modelo:', HF_MODEL);
+    console.log('[AI] API:', HF_API);
     console.log('[AI] Prompt:', selectedPrompt);
 
-    // Simula progresso
     let pct = 5;
     const interval = setInterval(() => {
       pct = Math.min(pct + 3, 90);
       setProgress(pct);
     }, 1200);
 
-    // Chama HF Inference API
+    // ✅ Chama HF Router (novo endpoint)
     const response = await fetch(HF_API, {
       method: 'POST',
       headers: {
@@ -121,7 +122,7 @@ async function generateBackground() {
         'x-use-cache': 'false'
       },
       body: JSON.stringify({
-        inputs: selectedPrompt + ', high quality, 8k, professional',
+        inputs: selectedPrompt + ', high quality, 8k, professional, no people, empty background',
         parameters: {
           width: 1024,
           height: 1024,
@@ -142,6 +143,8 @@ async function generateBackground() {
         errMsg = 'Modelo carregando. Aguarde 20s e tente novamente.';
       } else if (response.status === 429) {
         errMsg = 'Muitas requisições. Aguarde 1 minuto.';
+      } else if (response.status === 404) {
+        errMsg = 'Modelo não encontrado. Verifique o nome.';
       } else {
         try {
           const errJson = await response.json();
@@ -154,7 +157,6 @@ async function generateBackground() {
 
     setProgress(95);
 
-    // Recebe a imagem como blob
     const blob = await response.blob();
     console.log('[AI] Blob recebido:', blob.size, 'bytes, type:', blob.type);
 
@@ -162,7 +164,6 @@ async function generateBackground() {
       throw new Error('Resposta muito pequena — modelo pode estar carregando');
     }
 
-    // Converte para imagem
     const img = new Image();
     img.crossOrigin = 'anonymous';
 
@@ -177,7 +178,6 @@ async function generateBackground() {
     setProgress(100);
     loading(false);
 
-    // Re-renderiza
     render();
     toast('✨ Fundo gerado!', 'ok');
 
@@ -277,8 +277,12 @@ function loadFrame() {
 }
 
 /* =============================================================
-   RENDER
-   Ordem: fundo IA → foto recortada → moldura
+   RENDER — ORDEM CORRIGIDA
+   
+   1. Fundo branco
+   2. Fundo IA (se existir)
+   3. MOLDURA ← fica atrás da foto
+   4. FOTO do usuário ← fica na frente (aparece no centro da moldura)
    ============================================================= */
 function render() {
   ctx.clearRect(0, 0, SIZE, SIZE);
@@ -287,12 +291,17 @@ function render() {
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, SIZE, SIZE);
 
-  // 2. Fundo gerado por IA (se existir)
+  // 2. Fundo gerado por IA
   if (aiBackground) {
     ctx.drawImage(aiBackground, 0, 0, SIZE, SIZE);
   }
 
-  // 3. Foto do usuário
+  // 3. ✅ MOLDURA PRIMEIRO (fica atrás da foto)
+  if (frameImg && frameImg.complete && frameImg.naturalWidth > 0) {
+    ctx.drawImage(frameImg, 0, 0, SIZE, SIZE);
+  }
+
+  // 4. ✅ FOTO POR ÚLTIMO (fica na frente, aparece no centro transparente da moldura)
   const imgToDraw = cutout || photo;
   if (imgToDraw) {
     const aspect = imgToDraw.width / imgToDraw.height;
@@ -310,11 +319,6 @@ function render() {
     ctx.clip();
     ctx.drawImage(imgToDraw, x, y, fw, fh);
     ctx.restore();
-  }
-
-  // 4. Moldura por cima
-  if (frameImg && frameImg.complete && frameImg.naturalWidth > 0) {
-    ctx.drawImage(frameImg, 0, 0, SIZE, SIZE);
   }
 
   // UI
@@ -341,8 +345,8 @@ function loadPhoto(file) {
     const img = new Image();
     img.onload = () => {
       photo = img;
-      cutout = null;         // limpa recorte anterior
-      aiBackground = null;   // limpa fundo IA anterior
+      cutout = null;
+      aiBackground = null;
       zoom = 1; panX = 0; panY = 0;
       zoomInput.value = 1;
       zoomLabel.textContent = '100%';
@@ -425,7 +429,7 @@ async function removeBg() {
     const newImg = new Image();
     newImg.onload = () => {
       cutout = newImg;
-      photo = newImg;   // a foto ativa passa a ser a recortada
+      photo = newImg;
       loading(false);
       render();
       toast('✨ Fundo removido!', 'ok');
@@ -700,7 +704,6 @@ $('saveConfig').addEventListener('click', () => {
   toast('✅ Token salvo!', 'ok');
 });
 
-// Presets
 document.querySelectorAll('.preset').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.preset').forEach(b => b.classList.remove('active'));
@@ -710,7 +713,6 @@ document.querySelectorAll('.preset').forEach(btn => {
   });
 });
 
-// Fecha modal clicando fora
 $('configModal').addEventListener('click', e => {
   if (e.target === $('configModal')) closeConfig();
 });
@@ -747,7 +749,6 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 initFrames();
 render();
 
-// Se não tem token, sugere configurar no primeiro uso
 if (!getToken()) {
   setTimeout(() => {
     toast('💡 Configure seu token HF em ⚙️ para usar a IA', 'info');
